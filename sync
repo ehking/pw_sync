@@ -1,0 +1,157 @@
+<?php
+
+/*
+Plugin Name: Eh
+Plugin URI: https://developer.wordpress.org/plugins/the-basics/
+Description: ehking
+Version: 1.0.0.0
+Author: mobin ghasempoor
+Author URI: https://profiles.wordpress.org/lord_viper
+License: GPL2
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: my_lang
+Domain Path: /languages/
+*/
+
+function pluginprefix_install()
+{
+//ایجاد جدول
+    global $wpdb;
+
+    $results = $wpdb->get_results( "SELECT * FROM wp_posts WHERE post_status ='publish' AND ID IN (
+    SELECT object_id FROM wp_term_relationships WHERE term_taxonomy_id IN (
+  SELECT term_taxonomy_id FROM wp_term_taxonomy WHERE taxonomy = 'category' AND term_id IN (
+            SELECT t.term_id FROM wp_terms t WHERE t.term_id=1
+        )
+    )
+)" );
+    foreach ($results as $row){
+        $results = $wpdb->get_results( "select * from wp_postmeta WHERE meta_key='inrow' AND post_id=$row->ID" );
+        if(empty($results)){
+            $wpdb->insert('wp_postmeta',array(
+                'post_id'=>$row->ID,
+                'meta_key'=>'inrow',
+                'meta_value'=>0
+            ));
+        }
+    }
+
+
+}
+
+register_activation_hook( __FILE__, 'pluginprefix_install' );
+
+add_action( 'wp', 'wp_parsi_scheduled_event' );
+register_activation_hook( __FILE__, 'wp_parsi_scheduled_event' );
+
+add_filter( 'cron_schedules', 'wp_parsi_custom_schedule' );
+function wp_parsi_custom_schedule( $schedules ) {
+    $schedules[ 'five_minutes' ] = array(
+        'interval' 			=>	 60,
+        'display' 			=>	'Once five minutes'
+    );
+
+    return $schedules;
+}
+
+function wp_parsi_scheduled_event() {
+    if ( ! wp_next_scheduled( 'wp_parsi_daily_task' ) )
+        wp_schedule_event( time(), 'five_minutes', 'wp_parsi_daily_task' );
+}
+
+
+add_action( 'wp_parsi_daily_task', 'wp_parsi_func' );
+
+
+
+
+function wp_parsi_func() {
+    global $wpdb;
+//    require_once(ABSPATH.'wp-admin/includes/upgrade.php');
+    $results = $wpdb->get_results( "SELECT * FROM wp_posts WHERE post_status ='publish' AND ID IN (
+    SELECT object_id FROM wp_term_relationships WHERE term_taxonomy_id IN (
+  SELECT term_taxonomy_id FROM wp_term_taxonomy WHERE taxonomy = 'category' AND term_id IN (
+            SELECT t.term_id FROM wp_terms t WHERE t.term_id=1
+        )
+    )
+)" );
+
+    foreach ($results as $row){
+        $results = $wpdb->get_results( "select * from wp_postmeta WHERE meta_key='inrow' AND post_id=$row->ID" );
+        if(empty($results)){
+            $wpdb->insert('wp_postmeta',array(
+                'post_id'=>$row->ID,
+                'meta_key'=>'inrow',
+                'meta_value'=>0
+            ));
+        }
+    }
+    $results = $wpdb->get_results( "select * from wp_postmeta WHERE meta_key='inrow' AND meta_value=0" );
+    if(!empty($results)){
+        foreach ($results as $row){
+            $dsn = "pgsql:host=localhost;port=5432;dbname=discourse_development;user=sama;password=samatoos110";
+            $conn = new PDO($dsn);
+            if($conn){
+                $body=$row->post_content;
+                $title=$row->post_title;
+                $select="SELECT raw from posts where id=13";
+                $stmt=$conn->query($select);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC) ;
+//                            $body=$row['raw']."</br>"."test";
+                $body = $row['raw']
+                    .'bagh';
+                $sth = $conn->prepare('Update posts set raw=:body , cooked=:cooked where id=:id');
+                $sth->execute(array(
+                    ':body' => $body,
+                    ':cooked' => $body,
+                    ':id'=>13
+                ));
+            }
+            $wpdb->update('wp_postmeta',array(
+                'meta_key'=>'inrow',
+                'meta_value'=>1
+            ),array('post_id'=>$row->ID));
+        }
+    }
+}
+
+add_action( 'admin_menu', 'my_plugin_menu' );
+
+function my_plugin_menu() {
+    add_options_page( '  هماهنگ ساز چترسان', ' هماهنگ ساز چترسان', 'manage_options', 'my-unique-identifier', 'my_plugin_function' );
+}
+function my_plugin_function() {
+    if(isset($_POST['save'])){
+        update_option('mycat',$_POST['mycat']);
+        echo '<div style="border-right: 5px solid green;padding: 5px;background-color: #E8F5E9" class="animated fadeInLeft"><p>تنظیمات با موفقیت ذخیره شد</p></div>';
+    }
+    ?>
+    <div class="wrap">
+        <h2>این یک برگه مدیریت میباشد.</h2>
+        <form method="post" enctype="multipart/form-data">
+            <table class="widefat">
+                <thead>
+                <tr>
+                    <th colspan="۲">تنظیمات</th>
+                </tr>
+                </thead>
+                <tr>
+                    <td>انتخاب دسته بندی موردنظر</td>
+                    <td><?php
+                        $categories = get_categories(array(
+                            "hide_empty"=>"0",
+                        ));
+                         echo "<select name='mycat'>";
+                        foreach($categories as $category) {
+                                echo "<option value='".$category->term_id."' >$category->name</option>";
+                        }
+                        ?></td>
+                </tr>
+                <tr>
+                    <td><td colspan="۲"><input type="submit" name="save" value="ذخیره" class="button-primary" /></td></td>
+                </tr>
+            </table>
+        </form>
+    </div>
+    <?php
+}
